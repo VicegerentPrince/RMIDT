@@ -100,6 +100,23 @@ async def chat(body: ChatRequest):
     return result
 
 
+class AgentRequest(BaseModel):
+    task: str
+
+
+@app.post("/agent/run")
+async def agent_run(body: AgentRequest):
+    from ai.agent import run_agent
+    result = run_agent(body.task)
+    return result
+
+
+@app.get("/pipeline/info")
+async def pipeline_info():
+    from ml.regime_detector import preprocessor
+    return preprocessor.get_info()
+
+
 @app.get("/news/latest")
 async def news_latest(limit: int = 30):
     db = get_client()

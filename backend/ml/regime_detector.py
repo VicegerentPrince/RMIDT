@@ -3,19 +3,24 @@ Regime detector using RandomForestClassifier.
 
 Five regimes: Expansion, Peak, Contraction, Crisis, Recovery
 
-Trained on a heuristic-seeded dataset that encodes economic theory.
-Retrained each time classify() is called with new data from Supabase.
+The model is trained on a heuristic-seeded dataset that encodes economic theory.
+All features pass through MacroPreprocessor first — StandardScaler normalisation
+plus 3 engineered features (real_rate, yield_curve_inverted, stress_index),
+giving a 10-dimensional input space.
+
+Retrained from scratch at module load time; no incremental learning.
 """
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime, timezone
 from db.supabase_client import get_client
+from ml.preprocessing import MacroPreprocessor
 
 REGIMES = ["Expansion", "Peak", "Contraction", "Crisis", "Recovery"]
 
-# Each row: [gdp_growth, cpi_yoy, unemployment, fed_rate, treasury_10yr, yield_spread, equity_change_1m]
-# Labels encode economic theory for each regime
+# Seed training data — 7 raw features per row
+# [gdp_growth, cpi_yoy, unemployment, fed_rate, treasury_10yr, yield_spread, equity_change_1m]
 _SEED_X = np.array([
     # Expansion: GDP+, CPI moderate, unemployment low, equities up
     [3.5, 2.5, 4.0, 1.5, 3.5, 2.0,  4.0],
@@ -47,13 +52,17 @@ _SEED_Y = np.array([
     4, 4, 4,  # Recovery
 ])
 
+# Build and fit preprocessor on seed data, then train classifier on scaled features
+preprocessor = MacroPreprocessor()
+_SEED_X_SCALED = preprocessor.fit_transform(_SEED_X)
+
 _model = RandomForestClassifier(n_estimators=100, random_state=42)
-_model.fit(_SEED_X, _SEED_Y)
+_model.fit(_SEED_X_SCALED, _SEED_Y)
 
 
 def _build_feature_vector(economy: str, supabase_data: dict) -> np.ndarray:
-    """Extract feature vector for a given economy from the latest Supabase data."""
-    macro = supabase_data.get("macro", [])
+    """Extract raw 7-feature vector for a given economy from the latest Supabase data."""
+    macro  = supabase_data.get("macro", [])
     market = supabase_data.get("market", [])
 
     def get_macro(series: str, country: str = "US") -> float:
@@ -81,12 +90,12 @@ def _build_feature_vector(economy: str, supabase_data: dict) -> np.ndarray:
                    "rate": ("FEDFUNDS", "US"), "t10": ("DGS10", "US"),    "equity": "^GSPC"},
     }
 
-    cfg = economy_config.get(economy, economy_config["US"])
-    gdp = get_macro(*cfg["gdp"])
-    cpi = get_macro(*cfg["cpi"])
-    unem = get_macro(*cfg["unem"])
-    rate = get_macro(*cfg["rate"])
-    t10 = get_macro(*cfg["t10"])
+    cfg    = economy_config.get(economy, economy_config["US"])
+    gdp    = get_macro(*cfg["gdp"])
+    cpi    = get_macro(*cfg["cpi"])
+    unem   = get_macro(*cfg["unem"])
+    rate   = get_macro(*cfg["rate"])
+    t10    = get_macro(*cfg["t10"])
     spread = t10 - rate
     equity = get_equity_change(cfg["equity"])
 
@@ -96,29 +105,31 @@ def _build_feature_vector(economy: str, supabase_data: dict) -> np.ndarray:
 def classify_all(supabase_data: dict) -> list[dict]:
     """Classify all tracked economies and store results in Supabase."""
     economies = ["US", "EU", "PK", "CN", "GLOBAL"]
-    results = []
-    now = datetime.now(timezone.utc).isoformat()
+    results   = []
+    now       = datetime.now(timezone.utc).isoformat()
 
     for economy in economies:
         try:
-            features = _build_feature_vector(economy, supabase_data)
-            pred = int(_model.predict(features)[0])
-            proba = _model.predict_proba(features)[0]
+            raw_features     = _build_feature_vector(economy, supabase_data)
+            scaled_features  = preprocessor.transform(raw_features)
+
+            pred   = int(_model.predict(scaled_features)[0])
+            proba  = _model.predict_proba(scaled_features)[0]
             regime = REGIMES[pred]
-            confidence = round(float(proba[pred]), 4)
+            conf   = round(float(proba[pred]), 4)
 
             row = {
-                "economy": economy,
-                "regime": regime,
-                "confidence": confidence,
+                "economy":  economy,
+                "regime":   regime,
+                "confidence": conf,
                 "feature_snapshot": {
-                    "gdp_growth": float(features[0][0]),
-                    "cpi_yoy": float(features[0][1]),
-                    "unemployment": float(features[0][2]),
-                    "fed_rate": float(features[0][3]),
-                    "treasury_10yr": float(features[0][4]),
-                    "yield_spread": float(features[0][5]),
-                    "equity_change_1m": float(features[0][6]),
+                    "gdp_growth":       float(raw_features[0][0]),
+                    "cpi_yoy":          float(raw_features[0][1]),
+                    "unemployment":     float(raw_features[0][2]),
+                    "fed_rate":         float(raw_features[0][3]),
+                    "treasury_10yr":    float(raw_features[0][4]),
+                    "yield_spread":     float(raw_features[0][5]),
+                    "equity_change_1m": float(raw_features[0][6]),
                 },
                 "classified_at": now,
             }

@@ -4,6 +4,7 @@ import google.generativeai as genai
 from datetime import datetime, timezone
 from db.supabase_client import get_client
 from ai.prompts import MACRO_ANALYST_SYSTEM, STRESS_TEST_SYSTEM
+from ml.semantic_search import find_similar_history
 
 _model = None
 
@@ -83,7 +84,32 @@ Provide your macro analysis and prediction.
 """
 
         try:
-            parsed = _call_gemini(MACRO_ANALYST_SYSTEM, prompt)
+            # Run k-NN search for historically similar periods (zero API cost)
+            knn_analogs = find_similar_history(features, economy, k=3)
+            knn_block = ""
+            if knn_analogs:
+                knn_lines = [
+                    f"  - {a['period']} | regime={a['regime']} | similarity={a['similarity_score']:.2f}"
+                    for a in knn_analogs
+                ]
+                knn_block = "\nHistorically Similar Periods (k-NN search):\n" + "\n".join(knn_lines)
+
+            full_prompt = prompt + knn_block
+
+            parsed = _call_gemini(MACRO_ANALYST_SYSTEM, full_prompt)
+
+            # Prefer real k-NN analogs over AI-generated ones when available
+            historical_analogs = parsed.get("historical_analogs", [])
+            if knn_analogs:
+                historical_analogs = [
+                    {
+                        "period": a["period"],
+                        "similarity_score": a["similarity_score"],
+                        "outcome": f"Regime was '{a['regime']}' (confidence {a.get('confidence', 0):.0%})",
+                    }
+                    for a in knn_analogs
+                ]
+
             row = {
                 "economy": economy,
                 "regime": regime,
@@ -92,11 +118,12 @@ Provide your macro analysis and prediction.
                 "confidence": float(parsed.get("confidence", 0.5)),
                 "timeframe": parsed.get("timeframe", ""),
                 "trigger_conditions": parsed.get("trigger_conditions", {}),
-                "historical_analogs": parsed.get("historical_analogs", []),
+                "historical_analogs": historical_analogs,
                 "recommendation": parsed.get("recommendation", ""),
                 "input_snapshot": {
                     "regime_row": regime_row,
-                    "prompt": prompt,
+                    "knn_analogs": knn_analogs,
+                    "prompt": full_prompt,
                 },
                 "model_version": "gemini-2.5-flash",
                 "created_at": now,

@@ -87,3 +87,27 @@ async def stress_test(body: StressTestRequest):
     from ai.reasoning_engine import run_stress_test
     result = run_stress_test(body.scenario)
     return result
+
+
+class ChatRequest(BaseModel):
+    question: str
+
+
+@app.post("/chat")
+async def chat(body: ChatRequest):
+    from ai.chat_engine import answer_question
+    result = answer_question(body.question)
+    return result
+
+
+@app.get("/news/latest")
+async def news_latest(limit: int = 30):
+    db = get_client()
+    result = (
+        db.table("news_headlines")
+        .select("*")
+        .order("captured_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return {"data": result.data}

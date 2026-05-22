@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, LayoutDashboard, TrendingUp, Globe2,
   FileText, Zap, Settings, LogOut, Menu,
-  Wifi, WifiOff, Play
+  Wifi, WifiOff, Play, MessageSquare
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ const NAV = [
   { label: "Markets", href: "/dashboard/markets", icon: TrendingUp },
   { label: "Regimes", href: "/dashboard/regimes", icon: Globe2 },
   { label: "Predictions", href: "/dashboard/predictions", icon: FileText },
+  { label: "AI Chat", href: "/dashboard/chat", icon: MessageSquare },
   { label: "Stress Test", href: "/dashboard/stress-test", icon: Zap },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];

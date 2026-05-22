@@ -1,3 +1,5 @@
+import io
+import contextlib
 import yfinance as yf
 from datetime import datetime, timezone
 from db.supabase_client import get_client
@@ -30,10 +32,12 @@ COMMODITIES = {
 def _fetch_ticker(symbol: str, name: str, category: str) -> dict | None:
     try:
         t = yf.Ticker(symbol)
-        info = t.fast_info
-        price = getattr(info, "last_price", None)
-        prev_close = getattr(info, "previous_close", None)
-        volume = getattr(info, "three_month_average_volume", None)
+        _buf = io.StringIO()
+        with contextlib.redirect_stderr(_buf):
+            info = t.fast_info
+            price = getattr(info, "last_price", None)
+            prev_close = getattr(info, "previous_close", None)
+            volume = getattr(info, "three_month_average_volume", None)
 
         change_pct = None
         if price and prev_close and prev_close != 0:

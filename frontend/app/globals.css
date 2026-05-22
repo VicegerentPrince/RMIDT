@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0e1a;
+  --surface: #111827;
+  --surface-2: #1a2236;
+  --border: #1f2937;
+  --border-2: #2d3748;
+  --foreground: #f9fafb;
+  --foreground-muted: #9ca3af;
+  --accent-blue: #3b82f6;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-amber: #f59e0b;
+  --accent-orange: #f97316;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-blue);
+}
+
+/* Leaflet map dark override */
+.leaflet-container {
+  background: #0a0e1a;
+  font-family: inherit;
+}
+.leaflet-control-zoom a {
+  background: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #1f2937 !important;
+}
+.leaflet-popup-content-wrapper {
+  background: #111827 !important;
+  color: #f9fafb !important;
+  border: 1px solid #1f2937;
+  border-radius: 8px !important;
+}
+.leaflet-popup-tip {
+  background: #111827 !important;
+}
+
+/* Ticker animation */
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker 60s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* Pulse glow */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px 1px currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 12px 4px currentColor; opacity: 0.6; }
+}
+.pulse-dot {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Glass card */
+.glass {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(31, 41, 55, 0.8);
+}

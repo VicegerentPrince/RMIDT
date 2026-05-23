@@ -170,7 +170,7 @@ export default function MarketsPage() {
                         <td colSpan={4} className="px-4 py-4"><div className="h-4 bg-white/5 rounded animate-pulse" /></td>
                       </tr>
                     ))
-                    : byCategory(tab === "equities" ? "equity" : tab).map((r, i) => (
+                    : byCategory(tab === "equities" ? "equity" : tab === "commodities" ? "commodity" : tab).map((r, i) => (
                       <DataRow key={r.id} row={r} i={i} />
                     ))
                   }
@@ -180,7 +180,7 @@ export default function MarketsPage() {
           </motion.div>
         </AnimatePresence>
 
-        {!loading && tab !== "crypto" && byCategory(tab === "equities" ? "equity" : tab).length === 0 && (
+        {!loading && tab !== "crypto" && byCategory(tab === "equities" ? "equity" : tab === "commodities" ? "commodity" : tab).length === 0 && (
           <div className="p-8 text-center text-gray-500 text-sm">
             <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
             No {tab} data yet — run the pipeline to fetch live prices

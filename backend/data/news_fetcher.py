@@ -1,3 +1,4 @@
+import os
 import json
 import httpx
 import google.generativeai as genai

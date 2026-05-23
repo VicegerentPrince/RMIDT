@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { aiHeaders } from "@/lib/gemini-key";
 import type { User } from "@supabase/supabase-js";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -50,7 +51,7 @@ function Sidebar({ pathname, user, onNavClick, onLogout }: SidebarProps) {
     <div className="flex flex-col h-full">
       <div className="px-4 py-5 border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0">
             <Activity className="w-4 h-4 text-blue-400" />
           </div>
           <div>
@@ -75,7 +76,7 @@ function Sidebar({ pathname, user, onNavClick, onLogout }: SidebarProps) {
                   : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
               )}
             >
-              <Icon className={cn("w-4 h-4 flex-shrink-0", active ? "text-blue-400" : "text-gray-500 group-hover:text-gray-300")} />
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-blue-400" : "text-gray-500 group-hover:text-gray-300")} />
               {label}
               {active && (
                 <motion.div
@@ -90,7 +91,7 @@ function Sidebar({ pathname, user, onNavClick, onLogout }: SidebarProps) {
 
       <div className="px-3 py-4 border-t border-white/5">
         <div className="flex items-center gap-3 px-3 py-2 mb-1">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
             {user.email?.[0]?.toUpperCase() ?? "U"}
           </div>
           <div className="min-w-0">
@@ -122,7 +123,7 @@ export default function DashboardShell({ children, user }: { children: React.Rea
     setPipelineRunning(true);
     setPipelineStatus("running");
     try {
-      const res = await fetch("/api/pipeline/run");
+      const res = await fetch("/api/pipeline/run", { headers: aiHeaders() });
       if (res.ok) {
         setPipelineStatus("ok");
         toast.success("Pipeline completed — data refreshed");
@@ -159,7 +160,7 @@ export default function DashboardShell({ children, user }: { children: React.Rea
       <Toaster position="top-right" toastOptions={{ style: { background: "#111827", color: "#f9fafb", border: "1px solid #1f2937" } }} />
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-56 flex-col bg-[#0d1221] border-r border-white/5 flex-shrink-0">
+      <aside className="hidden lg:flex w-56 flex-col bg-[#0d1221] border-r border-white/5 shrink-0">
         <Sidebar {...sidebarProps} />
       </aside>
 
@@ -190,7 +191,7 @@ export default function DashboardShell({ children, user }: { children: React.Rea
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="h-14 flex items-center gap-4 px-4 border-b border-white/5 bg-[#0d1221]/50 backdrop-blur flex-shrink-0">
+        <header className="h-14 flex items-center gap-4 px-4 border-b border-white/5 bg-[#0d1221]/50 backdrop-blur shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
             className="lg:hidden text-gray-400 hover:text-white transition-colors"

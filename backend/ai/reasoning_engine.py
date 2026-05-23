@@ -1,27 +1,14 @@
-import os
 import json
 import google.generativeai as genai
 from datetime import datetime, timezone
 from db.supabase_client import get_client
 from ai.prompts import MACRO_ANALYST_SYSTEM, STRESS_TEST_SYSTEM
+from ai.api_key import get_api_key
 from ml.semantic_search import find_similar_history
-
-_model = None
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-        _model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=MACRO_ANALYST_SYSTEM,
-        )
-    return _model
 
 
 def _call_gemini(system: str, user_prompt: str) -> dict:
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    genai.configure(api_key=get_api_key())
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=system,
@@ -140,7 +127,7 @@ Provide your macro analysis and prediction.
     return results
 
 
-def run_stress_test(scenario_text: str) -> dict:
+def run_stress_test(scenario_text: str, user_id: str | None = None) -> dict:
     """Simulate a macro shock scenario and store in Supabase."""
     prompt = f"""
 Shock Scenario: {scenario_text}
@@ -159,6 +146,7 @@ Consider second and third-order effects.
         "full_analysis": parsed.get("full_analysis", ""),
         "confidence": float(parsed.get("confidence", 0.5)),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "user_id": user_id,
     }
 
     db = get_client()

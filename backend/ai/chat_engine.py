@@ -3,12 +3,12 @@ Context-aware AI chat engine.
 Fetches live Supabase state, builds a rich prompt, and answers questions via Gemini.
 """
 
-import os
 import json
 import google.generativeai as genai
 from datetime import datetime, timezone
 from db.supabase_client import get_client
 from ai.prompts import CHAT_SYSTEM
+from ai.api_key import get_api_key
 
 
 def _fetch_context() -> dict:
@@ -70,8 +70,7 @@ def answer_question(question: str) -> dict:
 
     prompt = f"{context_block}\n\n=== USER QUESTION ===\n{question}"
 
-    api_key = os.environ["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=get_api_key())
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=CHAT_SYSTEM,

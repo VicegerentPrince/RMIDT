@@ -83,6 +83,7 @@ create table if not exists predictions (
 -- Stress test results
 create table if not exists stress_tests (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
   scenario_text text not null,
   affected_markets jsonb,
   contagion_path jsonb,
@@ -91,6 +92,18 @@ create table if not exists stress_tests (
   full_analysis text,
   confidence numeric,
   created_at timestamptz default now()
+);
+
+-- Per-user agent run history
+create table if not exists agent_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  task text not null,
+  tool_trace jsonb not null default '[]',
+  answer jsonb not null default '{}',
+  model_version text,
+  elapsed_ms integer,
+  created_at timestamptz not null default now()
 );
 
 -- ============================================================
@@ -104,6 +117,7 @@ alter table news_headlines enable row level security;
 alter table regime_classifications enable row level security;
 alter table predictions enable row level security;
 alter table stress_tests enable row level security;
+alter table agent_runs enable row level security;
 
 -- Authenticated users can read all tables
 create policy "Authenticated read market_data" on market_data for select to authenticated using (true);
@@ -113,6 +127,8 @@ create policy "Authenticated read news_headlines" on news_headlines for select t
 create policy "Authenticated read regime_classifications" on regime_classifications for select to authenticated using (true);
 create policy "Authenticated read predictions" on predictions for select to authenticated using (true);
 create policy "Authenticated read stress_tests" on stress_tests for select to authenticated using (true);
+create policy "agent_runs_select_own" on agent_runs for select to authenticated using (user_id = auth.uid());
+create policy "agent_runs_insert_own" on agent_runs for insert to authenticated with check (user_id = auth.uid());
 
 -- Service role (backend) can insert into all tables
 create policy "Service insert market_data" on market_data for insert to service_role with check (true);

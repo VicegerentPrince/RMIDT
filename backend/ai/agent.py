@@ -9,7 +9,6 @@ ANSWER).  The response is parsed into a structured tool_trace for the frontend.
 Zero extra API calls beyond a single Gemini generation.
 """
 
-import os
 import re
 import json
 import time
@@ -18,6 +17,7 @@ from datetime import datetime, timezone
 
 from db.supabase_client import get_client
 from ai.prompts import AGENT_SYSTEM
+from ai.api_key import get_api_key
 from ml.semantic_search import find_similar_history
 
 
@@ -188,7 +188,7 @@ def run_agent(task: str) -> dict:
     )
 
     # Step 2: single Gemini call
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    genai.configure(api_key=get_api_key())
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=AGENT_SYSTEM,

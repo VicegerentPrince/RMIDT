@@ -7,14 +7,31 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const backendUrl = process.env.FASTAPI_INTERNAL_URL ?? "http://localhost:8000";
+  const question: string = body.question;
 
+  const backendUrl = process.env.FASTAPI_INTERNAL_URL ?? "http://localhost:8000";
+  const geminiKey = request.headers.get("x-gemini-api-key") ?? "";
   const res = await fetch(`${backendUrl}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: body.question }),
+    headers: { "Content-Type": "application/json", ...(geminiKey && { "X-Gemini-API-Key": geminiKey }) },
+    body: JSON.stringify({ question }),
   });
 
+  if (!res.ok) {
+    return NextResponse.json({ error: await res.text() }, { status: res.status });
+  }
+
   const data = await res.json();
-  return NextResponse.json(data, { status: res.status });
+
+  await supabase.from("chat_messages").insert({
+    user_id: user.id,
+    question,
+    answer: data.answer ?? "",
+    key_points: data.key_points ?? [],
+    relevant_data: data.relevant_data ?? {},
+    caveats: data.caveats ?? "",
+    model_version: data.model_version ?? null,
+  });
+
+  return NextResponse.json(data);
 }

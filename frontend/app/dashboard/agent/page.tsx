@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Zap, ChevronDown, Clock, AlertCircle, Loader2, Cpu } from "lucide-react";
+import { Bot, Zap, ChevronDown, Clock, AlertCircle, Loader2, Cpu, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { aiHeaders } from "@/lib/gemini-key";
+import { createClient } from "@/lib/supabase/client";
 import toast, { Toaster } from "react-hot-toast";
 
 const PRESET_TASKS = [
@@ -36,6 +38,27 @@ interface AgentResult {
   model_version: string;
   elapsed_ms: number;
   generated_at: string;
+  cached?: boolean;
+}
+
+interface AgentHistoryItem {
+  id: string;
+  task: string;
+  tool_trace: ToolStep[];
+  answer: AgentAnswer;
+  model_version: string | null;
+  elapsed_ms: number | null;
+  created_at: string;
+}
+
+function relTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  if (h >= 24) return `${Math.floor(h / 24)}d ago`;
+  if (h > 0) return `${h}h ago`;
+  if (m > 0) return `${m}m ago`;
+  return "just now";
 }
 
 function ToolStepCard({ step, index, total }: { step: ToolStep; index: number; total: number }) {
@@ -43,19 +66,16 @@ function ToolStepCard({ step, index, total }: { step: ToolStep; index: number; t
 
   return (
     <div className="relative">
-      {/* Connector line */}
       {index < total - 1 && (
-        <div className="absolute left-[18px] top-10 bottom-0 w-0.5 bg-gradient-to-b from-blue-500/30 to-transparent" />
+        <div className="absolute left-4.5 top-10 bottom-0 w-0.5 bg-linear-to-b from-blue-500/30 to-transparent" />
       )}
 
       <div className="flex gap-3">
-        {/* Step badge */}
-        <div className="w-9 h-9 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center flex-shrink-0 z-10">
+        <div className="w-9 h-9 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0 z-10">
           <span className="text-xs font-bold text-blue-300">{index + 1}</span>
         </div>
 
         <div className="flex-1 pb-4">
-          {/* Thought */}
           <div className="text-xs text-gray-400 italic mb-2 leading-relaxed">
             💭 {step.thought}
           </div>
@@ -66,7 +86,7 @@ function ToolStepCard({ step, index, total }: { step: ToolStep; index: number; t
               className="w-full glass rounded-xl overflow-hidden hover:bg-white/3 transition-colors text-left"
             >
               <div className="flex items-center gap-3 px-4 py-3">
-                <Cpu className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                <Cpu className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <code className="text-xs text-emerald-300 font-mono flex-1">{step.tool}</code>
                 <ChevronDown className={cn("w-3.5 h-3.5 text-gray-500 transition-transform", open && "rotate-180")} />
               </div>
@@ -158,7 +178,7 @@ function AnswerCard({ answer, elapsed_ms }: { answer: AgentAnswer; elapsed_ms: n
             <ul className="space-y-1">
               {answer.risk_factors.map((r, i) => (
                 <li key={i} className="flex gap-2 text-xs text-gray-400">
-                  <AlertCircle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
                   {r}
                 </li>
               ))}
@@ -174,6 +194,20 @@ export default function AgentPage() {
   const [task, setTask] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AgentResult | null>(null);
+  const [history, setHistory] = useState<AgentHistoryItem[]>([]);
+
+  useEffect(() => {
+    async function fetchHistory() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("agent_runs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data) setHistory(data as AgentHistoryItem[]);
+    }
+    fetchHistory();
+  }, []);
 
   async function runAgent(taskText: string) {
     if (!taskText.trim() || loading) return;
@@ -182,17 +216,41 @@ export default function AgentPage() {
     try {
       const res = await fetch("/api/agent/run", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...aiHeaders() },
         body: JSON.stringify({ task: taskText }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data: AgentResult = await res.json();
       setResult(data);
+      if (!data.cached) {
+        setHistory(prev => [{
+          id: crypto.randomUUID(),
+          task: data.task,
+          tool_trace: data.tool_trace,
+          answer: data.answer,
+          model_version: data.model_version,
+          elapsed_ms: data.elapsed_ms,
+          created_at: data.generated_at ?? new Date().toISOString(),
+        }, ...prev].slice(0, 5));
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Agent failed");
     } finally {
       setLoading(false);
     }
+  }
+
+  function loadHistory(h: AgentHistoryItem) {
+    setTask(h.task);
+    setResult({
+      task: h.task,
+      tool_trace: h.tool_trace,
+      answer: h.answer,
+      model_version: h.model_version ?? "",
+      elapsed_ms: h.elapsed_ms ?? 0,
+      generated_at: h.created_at,
+      cached: true,
+    });
   }
 
   return (
@@ -281,9 +339,17 @@ export default function AgentPage() {
           >
             {/* Task recap */}
             <div className="glass rounded-2xl px-5 py-4 flex items-start gap-3">
-              <Clock className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold mb-1">Task</div>
+              <Clock className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="text-[10px] text-gray-600 uppercase tracking-wide font-semibold">Task</div>
+                  {result.cached && (
+                    <span className="flex items-center gap-1 text-[10px] text-blue-400 font-mono">
+                      <Database className="w-3 h-3" />
+                      cached
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-300">{result.task}</p>
               </div>
             </div>
@@ -320,6 +386,46 @@ export default function AgentPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* History */}
+      <div className="glass rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-semibold text-white">Your Recent Agent Runs</span>
+          {history.length > 0 && (
+            <span className="text-xs text-gray-600 ml-auto">{history.length} saved</span>
+          )}
+        </div>
+        {history.length === 0 ? (
+          <p className="text-xs text-gray-600 text-center py-4">
+            No agent runs yet — run your first task above and it will appear here.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((h, i) => (
+              <button
+                key={h.id ?? i}
+                onClick={() => loadHistory(h)}
+                className={cn(
+                  "w-full text-left px-4 py-3 rounded-xl border transition-all",
+                  result?.task === h.task && result?.generated_at === h.created_at
+                    ? "bg-blue-500/10 border-blue-500/30"
+                    : "bg-white/3 hover:bg-blue-500/5 border-white/5 hover:border-blue-500/20"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-gray-300 truncate">{h.task}</span>
+                  <span className="text-[10px] text-gray-600 shrink-0">{relTime(h.created_at)}</span>
+                </div>
+                <div className="text-[10px] text-gray-600 mt-0.5">
+                  {h.tool_trace?.length ?? 0} steps
+                  {h.answer?.confidence ? ` · ${Math.round((h.answer.confidence) * 100)}% confidence` : ""}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,9 +1,9 @@
-import os
 import json
 import httpx
 import google.generativeai as genai
 from datetime import datetime, timezone
 from db.supabase_client import get_client
+from ai.api_key import get_api_key
 
 NEWSAPI_BASE = "https://newsapi.org/v2"
 
@@ -24,7 +24,7 @@ def _keyword_sentiment(title: str) -> str:
 
 def _llm_batch_sentiment(titles: list[str]) -> list[str]:
     """Score a batch of headlines with Gemini. Falls back to keyword matching on failure."""
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    api_key = get_api_key()
     if not api_key or not titles:
         return [_keyword_sentiment(t) for t in titles]
     try:
@@ -65,7 +65,7 @@ def _fetch_headlines(api_key: str, endpoint: str, params: dict) -> list[dict]:
         return []
 
 
-def fetch_and_store() -> list[dict]:
+def fetch_and_store(ai_enabled: bool = True) -> list[dict]:
     api_key = os.environ.get("NEWS_API_KEY", "")
     rows = []
     seen_titles: set[str] = set()
@@ -84,7 +84,7 @@ def fetch_and_store() -> list[dict]:
         articles_deduped.append(article)
 
     titles = [a["title"] for a in articles_deduped]
-    sentiments = _llm_batch_sentiment(titles)
+    sentiments = _llm_batch_sentiment(titles) if ai_enabled else [_keyword_sentiment(t) for t in titles]
 
     for article, sentiment in zip(articles_deduped, sentiments):
         pub = article.get("publishedAt")

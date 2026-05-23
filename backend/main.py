@@ -3,12 +3,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from scheduler import start_scheduler, run_full_pipeline, get_last_run
+from scheduler import start_scheduler, run_full_pipeline, get_last_run, get_settings, update_settings
 from db.supabase_client import get_client
+from ai.api_key import set_request_key, reset_request_key
 
 
 @asynccontextmanager
@@ -24,8 +25,21 @@ app.add_middleware(
     allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-Gemini-API-Key"],
+    expose_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def gemini_key_middleware(request: Request, call_next):
+    """Inject X-Gemini-API-Key header value into the per-request ContextVar."""
+    key = request.headers.get("x-gemini-api-key") or request.headers.get("X-Gemini-API-Key")
+    token = set_request_key(key or None)
+    try:
+        response = await call_next(request)
+    finally:
+        reset_request_key(token)
+    return response
 
 
 @app.get("/health")
@@ -80,12 +94,13 @@ async def market_snapshot():
 
 class StressTestRequest(BaseModel):
     scenario: str
+    user_id: str | None = None
 
 
 @app.post("/stress-test")
 async def stress_test(body: StressTestRequest):
     from ai.reasoning_engine import run_stress_test
-    result = run_stress_test(body.scenario)
+    result = run_stress_test(body.scenario, user_id=body.user_id)
     return result
 
 
@@ -115,6 +130,21 @@ async def agent_run(body: AgentRequest):
 async def pipeline_info():
     from ml.regime_detector import preprocessor
     return preprocessor.get_info()
+
+
+class SettingsUpdate(BaseModel):
+    ai_enabled: bool
+
+
+@app.get("/settings")
+async def settings_get():
+    return get_settings()
+
+
+@app.post("/settings")
+async def settings_update(body: SettingsUpdate):
+    update_settings({"ai_enabled": body.ai_enabled})
+    return get_settings()
 
 
 @app.get("/news/latest")

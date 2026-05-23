@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { aiHeaders } from "@/lib/gemini-key";
+import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, AlertTriangle, Shield, GitBranch, Clock, Loader2 } from "lucide-react";
+import { Zap, AlertTriangle, Shield, GitBranch, Clock, Loader2, Database } from "lucide-react";
+import { cn } from "@/lib/utils";
 import toast, { Toaster } from "react-hot-toast";
 
 const PRESETS = [
@@ -15,6 +18,7 @@ const PRESETS = [
 ];
 
 interface StressResult {
+  id?: string;
   scenario_text: string;
   affected_markets: { market: string; impact: string; severity: number }[];
   contagion_path: { step: number; event: string; timeframe: string }[];
@@ -22,6 +26,8 @@ interface StressResult {
   historical_analogs: { period: string; similarity: string; resolution: string }[];
   full_analysis: string;
   confidence: number;
+  created_at?: string;
+  cached?: boolean;
 }
 
 function SeverityBar({ value }: { value: number }) {
@@ -37,10 +43,37 @@ function SeverityBar({ value }: { value: number }) {
   );
 }
 
+function relTime(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  if (h >= 24) return `${Math.floor(h / 24)}d ago`;
+  if (h > 0) return `${h}h ago`;
+  if (m > 0) return `${m}m ago`;
+  return "just now";
+}
+
 export default function StressTestPage() {
   const [scenario, setScenario] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<StressResult | null>(null);
+  const [history, setHistory] = useState<StressResult[]>([]);
+
+  useEffect(() => {
+    async function fetchHistory() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("stress_tests")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data) setHistory(data as StressResult[]);
+    }
+    fetchHistory();
+  }, []);
 
   async function runTest() {
     if (!scenario.trim()) {
@@ -52,12 +85,15 @@ export default function StressTestPage() {
     try {
       const res = await fetch("/api/stress-test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...aiHeaders() },
         body: JSON.stringify({ scenario }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data: StressResult = await res.json();
       setResult(data);
+      if (data.id && !data.cached) {
+        setHistory(prev => [data, ...prev].slice(0, 5));
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Simulation failed");
     } finally {
@@ -153,9 +189,20 @@ export default function StressTestPage() {
             <div className="glass rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Scenario Analyzed</span>
-                <span className="text-sm font-mono text-amber-400">{(result.confidence * 100).toFixed(0)}% confidence</span>
+                <div className="flex items-center gap-3">
+                  {result.cached && (
+                    <span className="flex items-center gap-1 text-[10px] text-blue-400 font-mono">
+                      <Database className="w-3 h-3" />
+                      cached
+                    </span>
+                  )}
+                  <span className="text-sm font-mono text-amber-400">{(result.confidence * 100).toFixed(0)}% confidence</span>
+                </div>
               </div>
               <p className="text-white text-sm">{result.scenario_text}</p>
+              {result.created_at && (
+                <p className="text-[10px] text-gray-600 mt-2">{relTime(result.created_at)}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -243,6 +290,45 @@ export default function StressTestPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* History */}
+      <div className="glass rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-semibold text-white">Your Recent Simulations</span>
+          {history.length > 0 && (
+            <span className="text-xs text-gray-600 ml-auto">{history.length} saved</span>
+          )}
+        </div>
+        {history.length === 0 ? (
+          <p className="text-xs text-gray-600 text-center py-4">
+            No simulations yet — run your first scenario above and it will appear here.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((h, i) => (
+              <button
+                key={h.id ?? i}
+                onClick={() => { setResult(h); setScenario(h.scenario_text); }}
+                className={cn(
+                  "w-full text-left px-4 py-3 rounded-xl border transition-all",
+                  result?.id === h.id
+                    ? "bg-amber-500/10 border-amber-500/30"
+                    : "bg-white/3 hover:bg-amber-500/5 border-white/5 hover:border-amber-500/20"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-gray-300 truncate">{h.scenario_text}</span>
+                  <span className="text-[10px] text-gray-600 shrink-0">{h.created_at ? relTime(h.created_at) : ""}</span>
+                </div>
+                <div className="text-[10px] text-gray-600 mt-0.5">
+                  {(h.confidence * 100).toFixed(0)}% confidence · {h.affected_markets?.length ?? 0} markets
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

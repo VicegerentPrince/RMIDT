@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, Send, Loader2, Bot, User, AlertCircle, ChevronDown } from "lucide-react";
+import { MessageSquare, Send, Loader2, Bot, User, AlertCircle, ChevronDown, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { aiHeaders } from "@/lib/gemini-key";
+import { createClient } from "@/lib/supabase/client";
 import toast, { Toaster } from "react-hot-toast";
 
 const SUGGESTED = [
@@ -122,11 +124,53 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    async function loadHistory() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("chat_messages")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (data && data.length > 0) {
+        const restored: ChatMessage[] = [];
+        for (const row of [...data].reverse()) {
+          const ts = new Date(row.created_at).getTime();
+          restored.push({ role: "user", content: { question: row.question }, ts });
+          restored.push({
+            role: "ai",
+            content: {
+              answer: row.answer,
+              key_points: row.key_points ?? [],
+              relevant_data: row.relevant_data ?? {},
+              caveats: row.caveats ?? "",
+              model_version: row.model_version,
+            },
+            ts: ts + 1,
+          });
+        }
+        setMessages(restored);
+      }
+      setHistoryLoaded(true);
+    }
+    loadHistory();
+  }, []);
+
+  useEffect(() => {
+    if (historyLoaded) {
+      bottomRef.current?.scrollIntoView({ behavior: "instant" });
+    }
+  }, [historyLoaded]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, loading]);
 
   async function sendMessage(question: string) {
@@ -140,7 +184,7 @@ export default function ChatPage() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...aiHeaders() },
         body: JSON.stringify({ question }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -161,24 +205,48 @@ export default function ChatPage() {
     }
   }
 
+  function clearChat() {
+    setMessages([]);
+    inputRef.current?.focus();
+  }
+
+  const showEmpty = historyLoaded && messages.length === 0 && !loading;
+
   return (
     <div className="flex flex-col h-full">
       <Toaster position="top-right" toastOptions={{ style: { background: "#111827", color: "#f9fafb", border: "1px solid #1f2937" } }} />
 
       {/* Header */}
-      <div className="px-4 lg:px-6 py-4 border-b border-white/5 flex-shrink-0">
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-emerald-400" />
-          AI Macro Analyst
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Ask anything about current regimes, market conditions, and predictions · powered by Gemini 2.5 Flash
-        </p>
+      <div className="px-4 lg:px-6 py-4 border-b border-white/5 flex-shrink-0 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-emerald-400" />
+            AI Macro Analyst
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Ask anything about current regimes, market conditions, and predictions · powered by Gemini 2.5 Flash
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-400 hover:text-gray-200 transition-all shrink-0 mt-1"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            New chat
+          </button>
+        )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 space-y-5">
-        {messages.length === 0 && !loading && (
+        {!historyLoaded && (
+          <div className="flex justify-center pt-8">
+            <Loader2 className="w-5 h-5 text-gray-600 animate-spin" />
+          </div>
+        )}
+
+        {showEmpty && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -207,6 +275,12 @@ export default function ChatPage() {
               </div>
             </div>
           </motion.div>
+        )}
+
+        {messages.length > 0 && (
+          <div className="text-center">
+            <span className="text-[10px] text-gray-700 font-mono">— conversation history —</span>
+          </div>
         )}
 
         <AnimatePresence initial={false}>
@@ -262,7 +336,7 @@ export default function ChatPage() {
           <button
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
-            className="p-3 rounded-xl bg-emerald-600/80 hover:bg-emerald-500/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex-shrink-0"
+            className="p-3 rounded-xl bg-emerald-600/80 hover:bg-emerald-500/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
           >
             {loading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}
           </button>

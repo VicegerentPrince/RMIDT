@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, LayoutDashboard, TrendingUp, Globe2,
   FileText, Zap, Settings, LogOut, Menu,
-  Wifi, WifiOff, Play, MessageSquare, Bot
+  Wifi, WifiOff, Play, MessageSquare, Bot, Newspaper
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ import toast, { Toaster } from "react-hot-toast";
 const NAV = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Markets", href: "/dashboard/markets", icon: TrendingUp },
+  { label: "News", href: "/dashboard/news", icon: Newspaper },
   { label: "Regimes", href: "/dashboard/regimes", icon: Globe2 },
   { label: "Predictions", href: "/dashboard/predictions", icon: FileText },
   { label: "AI Agent", href: "/dashboard/agent", icon: Bot },
